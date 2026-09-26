@@ -38,8 +38,10 @@ The verifier keeps the payload untrusted until the signature succeeds.
 
 ## Phase 2 — caller context and the resolution engine
 
-_This is where most people's first model is wrong. Write down the model you started with, the
-observation that broke it, and the model you moved to. Be specific about the observation._
+I initially expected a device-specific allow to override a broader refusal because it is more
+specific. The discriminating case in `scripts/check-permissions.js` kept the permission denied;
+the reducer therefore records denials first and never lets an allow carve one out. The catalogue
+is read from SQLite, so the personalized permission is handled without a code change.
 
 ## Phase 3 — orgs, members, invites
 

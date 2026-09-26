@@ -23,6 +23,19 @@ shape check; those paths can throw the wrong error or accept an algorithm the se
 **What would change my mind:** A protocol requirement that exposed distinct malformed-token details
 to clients instead of one unauthenticated response class.
 
+---
+
+### Deny precedence is independent of grant specificity
+
+**What I chose:** Collect matching denials before allows and let an explicit deny win at every
+scope.
+**Why:** The `org-wide DENY + device-scoped ALLOW` case in `scripts/check-permissions.js` is the
+discriminating evidence; the suite passed all 35 cases with the deny retained.
+**What I rejected:** Sorting grants by specificity and applying the most specific last. That would
+allow a device carve-out to defeat an org-wide refusal.
+**What would change my mind:** A fixture and assertion that explicitly treats a narrow allow as an
+exception to a broader deny.
+
 <!-- Copy the block above per decision. The two stubs below show the required shape and contain no
      engineering content — replace or delete them. -->
 
