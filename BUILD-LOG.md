@@ -26,13 +26,15 @@ Note: this is the failure mode where a passing test is worse than a failing one.
 
 ## Phase 0 — orientation
 
-_Installed, reset the database, read the documents, ran the suites against the untouched skeleton.
-What did the starting line actually look like, and which failure surprised you?_
+2026-09-26: Created a clean repository from the candidate handout only. The previous workspace
+was kept separate because its history contained reference-derived files; this repository starts
+with commit `fb34d8b` and no reference implementation.
 
 ## Phase 1 — token verification
 
-_What did you expect each failure mode to look like before you ran it? Which one behaved
-differently from your expectation, and what did that tell you?_
+I expected malformed input to be rejected, but the test also exercises valid JSON values that are
+not objects. I added structure checks before reading claims and constant-time signature comparison.
+The verifier keeps the payload untrusted until the signature succeeds.
 
 ## Phase 2 — caller context and the resolution engine
 

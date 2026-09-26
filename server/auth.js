@@ -71,12 +71,50 @@ export function issueAccessToken({ userId, orgId, role, permVersion }, secret) {
 // `node scripts/check-jwt.js` is the public test suite for this function.
 // ---------------------------------------------------------------------------
 export function verifyAccessToken(token, secret) {
-  // YOURS TO WRITE. Every failure mode listed above must be a 401 UNAUTHENTICATED.
-  // `node scripts/check-jwt.js` is the public suite for this function.
-  throw Object.assign(
-    new Error('TODO: server/auth.js — verifyAccessToken() is yours to write (AUTH-DATA-MODEL.md §10).'),
-    { code: 'NOT_IMPLEMENTED' }
-  );
+  const segments = typeof token === 'string' ? token.split('.') : [];
+  if (segments.length !== 3 || segments.some((segment) => !/^[A-Za-z0-9_-]+$/.test(segment))) {
+    throw unauthenticated('malformed token');
+  }
+
+  const [encodedHeader, encodedPayload, encodedSignature] = segments;
+  let header;
+  let claims;
+  try {
+    header = JSON.parse(unb64(encodedHeader).toString('utf8'));
+    claims = JSON.parse(unb64(encodedPayload).toString('utf8'));
+  } catch {
+    throw unauthenticated('malformed token');
+  }
+
+  if (!header || typeof header !== 'object' || Array.isArray(header)) {
+    throw unauthenticated('malformed token header');
+  }
+  if (header.alg !== ALG || header.typ !== 'JWT') {
+    throw unauthenticated('unsupported token algorithm');
+  }
+
+  const expected = createHmac('sha256', secret)
+    .update(`${encodedHeader}.${encodedPayload}`)
+    .digest();
+  const supplied = unb64(encodedSignature);
+  if (supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) {
+    throw unauthenticated('bad signature');
+  }
+
+  if (!claims || typeof claims !== 'object' || Array.isArray(claims)) {
+    throw unauthenticated('malformed token payload');
+  }
+  const now = Math.floor(Date.now() / 1000);
+  if (typeof claims.exp !== 'number' || claims.exp <= now) {
+    throw unauthenticated('token expired');
+  }
+  if (claims.iss !== ISS || claims.aud !== AUD) {
+    throw unauthenticated('bad token issuer or audience');
+  }
+  if (typeof claims.jti !== 'string' || claims.jti.length === 0) {
+    throw unauthenticated('token has no jti');
+  }
+  return claims;
 }
 
 

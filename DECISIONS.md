@@ -11,12 +11,17 @@ Rules, from `DISCOVERY-BRIEF.md`:
 
 ---
 
-### <the decision, as a claim — not "permissions", but "the org-level view counts device-scoped grants">
+### JWT verification validates structure before trusting claims
 
-**What I chose:**
-**Why:** _(evidence: test, log line, commit)_
-**What I rejected:** _(the plausible alternative, and the specific reason it fails)_
-**What would change my mind:**
+**What I chose:** Reject malformed segments and non-object JSON before claim validation, and verify
+the HMAC before treating payload values as authenticated data.
+**Why:** `scripts/check-jwt.js` includes `header is not an object`, malformed base64url, and
+algorithm-substitution cases. The decision is recorded in BUILD-LOG Phase 1 and will be checked by
+the focused suite before the next implementation phase.
+**What I rejected:** Letting `Buffer` decode arbitrary input and accessing `header.alg` without a
+shape check; those paths can throw the wrong error or accept an algorithm the server did not choose.
+**What would change my mind:** A protocol requirement that exposed distinct malformed-token details
+to clients instead of one unauthenticated response class.
 
 <!-- Copy the block above per decision. The two stubs below show the required shape and contain no
      engineering content — replace or delete them. -->
