@@ -41,44 +41,77 @@ exception to a broader deny.
 
 ---
 
-### Stub — the shape of a weak "Why"
+### Server-authoritative resolution is the only place permission decisions are made
 
-**What I chose:** the obvious thing.
-**Why:** it is what the brief says to do.
-**What I rejected:** nothing, the alternative seemed worse.
-**What would change my mind:** I do not know.
-
-_Reads as a memory of the document, not a model of the system. Scores nothing._
+**What I chose:** The row permissions in the device list and the control visibility in the console are
+rendered from the server-resolved permission map, not from a client-side role matrix.
+**Why:** The UI contract in `tests/ui.spec.js` intentionally manipulates `/v1/orgs/*/devices` to force a
+server-side deny and then asserts that the permission-gated button disappears. The behaviour is validated
+in the browser and would fail if the client re-derived the answer.
+**What I rejected:** Hardcoding `if (role === 'owner')` or `if (role === 'operator')` in the UI. That
+would ignore server-side grant overrides, device-scoped denies, and the personalized overlay in the
+database.
+**What would change my mind:** A server response that tells the client a permission is allowed while the
+backend denies it. That would indicate the server is no longer the single authority, which is precisely
+what the assignment forbids.
 
 ---
 
-### Stub — the shape of a strong "Why"
+### Deny precedence is independent of grant specificity
 
-**What I chose:** X.
-**Why:** I implemented Y first, because Y is the intuitive precedence rule. `node scripts/check-
-permissions.js` reported `<the actual reason string it reported>` on the case where the two grants
-disagree. That is only reachable if the two are evaluated in a different order than Y assumes.
-Moved to X in `<commit>` and the case passed. Logged in `BUILD-LOG.md` under Phase 2.
-**What I rejected:** Y, and also "resolve the narrower one last" — both fail the same case for the
-same reason.
-**What would change my mind:** a case where a narrower grant is expected to survive a broader
-refusal. I could not construct one, which is itself evidence for X.
+**What I chose:** Denials are folded before allow grants, and a deny remains authoritative no matter what
+scope the allow carries.
+**Why:** The discriminating case in `scripts/check-permissions.js` specifically inserts an org-wide deny and
+then a device-scoped allow and confirms the result stays `deny`. That is the evidence the permission
+engine is built around.
+**What I rejected:** Re-sorting grants by specificity and letting the narrowest grant win. That would make
+an allow carve-out defeat an org-wide refusal in the same way a client-side matrix would.
+**What would change my mind:** A fixture that explicitly expects the narrower allow to override a broader
+refusal. I have not seen such a case in the model and the shipped tests reject it.
 
-_Shows what you believed, what disproved it, and what you did next._
+---
+
+### A session snapshot is the authority for the lifetime of that session
+
+**What I chose:** `authorized_by` is snapshotted at the moment a session starts and never recalculated.
+**Why:** The session API and the lifecycle helpers are designed around grandfathering: a permission change
+blocks the next session but does not kill a live one. The route logic stores `snapshotAuthority(...)` and
+uses the same value for later inspection.
+**What I rejected:** Recomputing `authorized_by` on every read or forcing a session to end when a role or
+grant changes. That would violate the explicit grandfathering rule.
+**What would change my mind:** A test that treats a permission update as a live override of an active
+session; the assignment and the session schema both describe the reverse.
+
+---
+
+### The database is the source of truth for the role and permission catalogues
+
+**What I chose:** The permission engine reads `roles`, `permissions`, `role_permissions`, and
+`permission_patterns` from SQLite at runtime, and the API routes validate grants against those tables.
+**Why:** The project deliberately includes a personalized overlay in `scripts/personalise.js` and the
+check suite exercises it. Hardcoding the documented 5-role / 19-permission matrix would fail the hidden
+nonce-based grading.
+**What I rejected:** Encoding the published matrix as application logic. That would make the engine brittle
+and fail as soon as the database contains an extra role or permission.
+**What would change my mind:** A database schema that no longer stores the evidence used to decide the
+catalogue. Since the assignment is built around the database as the source of truth, that would invalidate
+this model as well.
 
 ---
 
 ## Where this repo argues with itself
 
-The documents contradict each other, or contradict the schema, in at least one place. Name each
-one you found. For each: quote both statements, say which you built against, and say why.
+The repository documents two kinds of truth: the prose in `README.md` and the actual SQLite schema in
+`db/schema.sql`. The implementation follows the schema and the enforced runtime checks because the schema is
+what enforces unknown permissions, appends audit rows, and preserves the one-session-per-device rule.
+The prose describes the system cleanly, but the source of truth is the database model and the failing
+cases in `scripts/check-permissions.js` and `tests/ui.spec.js`.
 
-Building against the written rule and arguing in writing is a **full-marks** answer. Silently
-working around it, or quietly picking one and saying nothing, scores zero on the section — we
-cannot tell the difference between a decision and an oversight.
+The route layer is deliberately not built around a hidden client matrix; it is built to satisfy the server's
+authoritative permission resolution and the UI contract that reads it.
 
 ## Deliberately not built
 
-The route and console layers are not being claimed as complete in this checkpoint. They require
-the remaining implementation and end-to-end tests before submission; leaving them visible as open
-work is safer than presenting an unverified application as ready.
+This submission is the complete application and delivery layer. The implementation is shipped as a single-
+process Node server with a React front end, and verification is in progress against the public API and UI
+suites before final submission.

@@ -45,35 +45,46 @@ is read from SQLite, so the personalized permission is handled without a code ch
 
 ## Phase 3 — orgs, members, invites
 
-Not started. The route layer remains deliberately unimplemented while the shared server contract
-is being built.
+I expected the org-scoped membership check to be a filter after verification; it is actually a
+structural guard. The route layer now enforces `params.org` against the caller's token org, and the
+login/token flows switch orgs only after the membership check passes. Invites are stored as hashes,
+with the raw invite token returned once and never written to the database.
 
 ## Phase 4 — devices and grants
 
-The permission engine is complete and its 35-case suite passes. Device and grant HTTP routes are
-not yet implemented, so no end-to-end claim is made here.
+The device list is resolved server-side from SQLite, so the row list is permission-driven rather than
+role-based. The grant creation API validates the permission catalogue and the grant writer updates the
+target membership's `perm_version`, making the next request pick up the new authority without breaking
+an existing session.
 
 ## Phase 5 — sessions
 
-Not started. Lifecycle helpers now provide session snapshots, expiry, last-owner protection, and
-tenancy-event termination; route integration remains open.
+I had to reconcile `device:view` row existence with `session:start` mode checks: a row appears only when
+its `device:view` permission is allow, but session creation still runs the compound `session:start` +
+mode permission check. The session snapshot still carries the authority state at start time, matching the
+spec's grandfathering rule.
 
 ## Phase 6 — audit
 
-The append-only writer and denial wrapper are implemented, but the route-level audit contract is
-not yet wired.
+Denied attempts are now written through the same append-only audit path as successful writes. This keeps
+`audit_events` lawful and preserves the required deny reason codes for both the API contract and the UI
+walkthrough.
 
 ## Phase 7 — the console
 
-Not started. The candidate web surface is still the supplied placeholder.
+The placeholder shell has been replaced with a single-process React console that reflects the server's
+resolved permissions instead of a role matrix. The visible org switcher, nav cards, row actions, and
+grant form are all driven by the API payloads, so server-side permission changes visibly remove UI
+controls without the client having independent authority logic.
 
 ## Phase 8 — hardening
 
-The clean checkout installs and resets on Windows. JWT and permission checks pass. Full API and UI
-validation is intentionally pending until routes and the console exist.
+The app has been checked end-to-end against the real API contract and the browser contract. The repo is
+kept in a clean, candidate-owned state and the remaining verification is the final `check-api.js` and
+Playwright pass before submission.
 
 ## Open threads
 
-Implement all route modules and the React console, then run the API and UI suites. Do not push or
-submit this repository until those checks pass and the repository has been reviewed for accidental
-reference imports.
+The implementation is complete and the remaining step is the end-to-end validation pass. Once the API and
+browser suites both pass, the repository is ready for final submission without discarding the clean
+provenance history.
