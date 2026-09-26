@@ -45,33 +45,35 @@ is read from SQLite, so the personalized permission is handled without a code ch
 
 ## Phase 3 — orgs, members, invites
 
-_Anything you had to work out that no document states. Invite lifecycle states are a common
-source of this._
+Not started. The route layer remains deliberately unimplemented while the shared server contract
+is being built.
 
 ## Phase 4 — devices and grants
 
-_What happens at the boundary where two grants disagree, or where a grant's scope and the
-question's scope differ? Say what you predicted and what you got._
+The permission engine is complete and its 35-case suite passes. Device and grant HTTP routes are
+not yet implemented, so no end-to-end claim is made here.
 
 ## Phase 5 — sessions
 
-_Two permissions, one device. What did you have to resolve, and in what order, to keep the two
-failure reasons distinguishable?_
+Not started. Lifecycle helpers now provide session snapshots, expiry, last-owner protection, and
+tenancy-event termination; route integration remains open.
 
 ## Phase 6 — audit
 
-_What did you decide counts as an auditable event, and what pushed you to that line?_
+The append-only writer and denial wrapper are implemented, but the route-level audit contract is
+not yet wired.
 
 ## Phase 7 — the console
 
-_Where did the server's answer and your instinct disagree about what should be on screen?_
+Not started. The candidate web surface is still the supplied placeholder.
 
 ## Phase 8 — hardening
 
-_What did you measure, what did you fix, and what did you deliberately leave alone? Anything you
-chose not to build belongs here with its reason._
+The clean checkout installs and resets on Windows. JWT and permission checks pass. Full API and UI
+validation is intentionally pending until routes and the console exist.
 
 ## Open threads
 
-_Things you know are wrong, unfinished, or that you would do differently with another day. Listing
-these honestly is worth more than pretending they do not exist — we will find them anyway._
+Implement all route modules and the React console, then run the API and UI suites. Do not push or
+submit this repository until those checks pass and the repository has been reviewed for accidental
+reference imports.

@@ -79,5 +79,6 @@ cannot tell the difference between a decision and an oversight.
 
 ## Deliberately not built
 
-What you chose not to build, and the reason. A scope cut with a stated reason is a senior
-judgement. An unmentioned gap is a gap.
+The route and console layers are not being claimed as complete in this checkpoint. They require
+the remaining implementation and end-to-end tests before submission; leaving them visible as open
+work is safer than presenting an unverified application as ready.
