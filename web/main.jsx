@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
 async function api(path, { method = 'GET', body, token, headers = {} } = {}) {
@@ -31,6 +31,82 @@ async function api(path, { method = 'GET', body, token, headers = {} } = {}) {
   return parsed;
 }
 
+function InvitePage() {
+  const [detail, setDetail] = useState(null);
+  const [error, setError] = useState('');
+  const [name, setName] = useState('');
+  const [password, setPassword] = useState('');
+
+  const token = window.location.pathname.replace(/^\/invite\//, '');
+
+  useEffect(() => {
+    api(`/invites/${token}`)
+      .then((data) => setDetail(data))
+      .catch(() => setError('Invite link is invalid or expired.'));
+  }, [token]);
+
+  const submit = async (event) => {
+    event.preventDefault();
+    try {
+      await api(`/invites/${token}/accept`, {
+        method: 'POST',
+        body: { name: name.trim(), password },
+      });
+      window.location.href = '/';
+    } catch (err) {
+      setError(err.message || 'Invite link is invalid or expired.');
+    }
+  };
+
+  if (!detail && error) {
+    return (
+      <main style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: '#0f172a', color: '#e2e8f0', fontFamily: 'Inter, ui-sans-serif, system-ui' }}>
+        <section style={{ width: 420, background: '#111827', border: '1px solid #334155', borderRadius: 16, padding: 24 }}>
+          <div data-testid="invite-error" style={{ color: '#fca5a5', fontWeight: 600 }}>{error}</div>
+        </section>
+      </main>
+    );
+  }
+
+  if (!detail) {
+    return (
+      <main style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: '#0f172a', color: '#e2e8f0', fontFamily: 'Inter, ui-sans-serif, system-ui' }}>
+        <section style={{ width: 420, background: '#111827', border: '1px solid #334155', borderRadius: 16, padding: 24 }}>
+          <div>Loading…</div>
+        </section>
+      </main>
+    );
+  }
+
+  return (
+    <main style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: '#0f172a', color: '#e2e8f0', fontFamily: 'Inter, ui-sans-serif, system-ui' }}>
+      <section style={{ width: 420, background: '#111827', border: '1px solid #334155', borderRadius: 16, padding: 24 }}>
+        <h1 style={{ marginTop: 0 }}>Accept invitation</h1>
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ opacity: 0.7, fontSize: 12, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Role</div>
+          <div data-testid="invite-role" style={{ fontSize: 22, fontWeight: 700 }}>{detail.role}</div>
+        </div>
+        <form onSubmit={submit}>
+          <label style={{ display: 'block', marginBottom: 10 }}>
+            <span>Email</span>
+            <input data-testid="invite-email" value={detail.email} readOnly style={{ width: '100%', marginTop: 6, padding: 10, borderRadius: 8, border: '1px solid #475569', background: '#0f172a', color: '#f8fafc' }} />
+          </label>
+          <label style={{ display: 'block', marginBottom: 10 }}>
+            <span>Name</span>
+            <input data-testid="invite-name" value={name} onChange={(e) => setName(e.target.value)} style={{ width: '100%', marginTop: 6, padding: 10, borderRadius: 8, border: '1px solid #475569', background: '#0f172a', color: '#f8fafc' }} />
+          </label>
+          <label style={{ display: 'block', marginBottom: 12 }}>
+            <span>Password</span>
+            <input data-testid="invite-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} style={{ width: '100%', marginTop: 6, padding: 10, borderRadius: 8, border: '1px solid #475569', background: '#0f172a', color: '#f8fafc' }} />
+          </label>
+          {error ? <div data-testid="invite-error" style={{ color: '#fca5a5', marginBottom: 12 }}>{error}</div> : null}
+          <button data-testid="invite-submit" type="submit" style={{ width: '100%', padding: 10, borderRadius: 8, border: 'none', background: '#38bdf8', color: '#082f49', fontWeight: 600 }}>Create account</button>
+        </form>
+      </section>
+    </main>
+  );
+}
+
 function App() {
   const [token, setToken] = useState(null);
   const [session, setSession] = useState(null);
@@ -47,27 +123,67 @@ function App() {
   const [loginForm, setLoginForm] = useState({ email: 'dana@example.test', password: 'demo1234' });
   const [error, setError] = useState('');
   const [grantForm, setGrantForm] = useState({ open: false, userId: '', deviceId: '', effect: 'allow', permissionKeys: ['device:terminal'] });
+  const loadGeneration = useRef(0);
 
-  const activeOrg = useMemo(() => orgs.find((org) => org.id === activeOrgId) ?? null, [activeOrgId, orgs]);
+  const effectiveOrgId = activeOrgId || session?.orgId || '';
+  const effectiveOrgTheme = orgTheme || orgs.find((org) => org.id === effectiveOrgId)?.theme || 'cobalt';
+  const activeOrg = useMemo(() => orgs.find((org) => org.id === effectiveOrgId) ?? null, [effectiveOrgId, orgs]);
 
-  const loadOrgData = async (orgId) => {
-    const [org, deviceData, membersData, grantsData, sessionsData, auditData] = await Promise.all([
-      api(`/orgs/${orgId}`, { token }),
-      api(`/orgs/${orgId}/devices`, { token }),
-      api(`/orgs/${orgId}/members`, { token }),
-      api(`/orgs/${orgId}/grants`, { token }),
-      api(`/orgs/${orgId}/sessions`, { token }),
-      api(`/orgs/${orgId}/audit?limit=25`, { token }),
-    ]);
+  const resetOrgState = () => {
+    setDevices([]);
+    setMembers([]);
+    setGrants([]);
+    setSessions([]);
+    setAudit([]);
+    setOrgPermissions({});
+  };
 
+  const loadOrgData = async (orgId, accessToken = token) => {
+    const generation = ++loadGeneration.current;
     setActiveOrgId(orgId);
+    resetOrgState();
+
+    let org;
+    try {
+      org = await api(`/orgs/${orgId}`, { token: accessToken });
+    } catch (err) {
+      if (generation === loadGeneration.current) setError(err.message);
+      return;
+    }
+
+    if (generation !== loadGeneration.current) return;
     setOrgTheme(org.theme ?? 'cobalt');
     setOrgPermissions(org.permissions ?? {});
-    setDevices(deviceData.devices ?? []);
-    setMembers(membersData.members ?? []);
-    setGrants(grantsData.grants ?? []);
-    setSessions(sessionsData.sessions ?? []);
-    setAudit(auditData.events ?? []);
+
+    const fetchers = [
+      ['devices', '/devices', () => api(`/orgs/${orgId}/devices`, { token: accessToken }), 'device:list'],
+      ['members', '/members', () => api(`/orgs/${orgId}/members`, { token: accessToken }), 'user:read'],
+      ['grants', '/grants', () => api(`/orgs/${orgId}/grants`, { token: accessToken }), 'grant:create'],
+      ['sessions', '/sessions', () => api(`/orgs/${orgId}/sessions`, { token: accessToken }), 'session:view'],
+      ['audit', '/audit?limit=25', () => api(`/orgs/${orgId}/audit?limit=25`, { token: accessToken }), 'audit:read'],
+    ];
+
+    for (const [key, path, loader, permission] of fetchers) {
+      try {
+        const data = await loader();
+        if (generation !== loadGeneration.current) return;
+        if (key === 'devices') setDevices(data.devices ?? []);
+        if (key === 'members') setMembers(data.members ?? []);
+        if (key === 'grants') setGrants(data.grants ?? []);
+        if (key === 'sessions') setSessions(data.sessions ?? []);
+        if (key === 'audit') setAudit(data.events ?? []);
+      } catch (err) {
+        if (err.message && err.message.startsWith('missing permission:')) {
+          continue;
+        }
+        if (permission && err.message && err.message.includes(permission)) continue;
+        if (path.includes('audit') && err.message && err.message.includes('missing permission')) continue;
+        if (path.includes('devices') && err.message && err.message.includes('missing permission')) continue;
+        if (path.includes('members') && err.message && err.message.includes('missing permission')) continue;
+        if (path.includes('sessions') && err.message && err.message.includes('missing permission')) continue;
+        if (path.includes('grants') && err.message && err.message.includes('missing permission')) continue;
+      }
+    }
   };
 
   useEffect(() => {
@@ -77,8 +193,11 @@ function App() {
         setToken(data.token);
         setSession({ user: data.user, role: data.role, orgId: data.orgId });
         setOrgs(data.orgs ?? []);
+        const nextTheme = data.orgs?.find((org) => org.id === data.orgId)?.theme ?? 'cobalt';
+        setActiveOrgId(data.orgId);
+        setOrgTheme(nextTheme);
         if (data.orgId) {
-          await loadOrgData(data.orgId);
+          await loadOrgData(data.orgId, data.token);
         }
       } catch {
         setSession(null);
@@ -90,26 +209,42 @@ function App() {
 
   const handleLogin = async (event) => {
     event.preventDefault();
+    setError('');
+
+    if (!loginForm.email.trim() || !loginForm.password.trim()) {
+      setError('Email and password are required.');
+      return;
+    }
+
     try {
       const data = await api('/auth/login', {
         method: 'POST',
         body: {
-          email: loginForm.email,
+          email: loginForm.email.trim().toLowerCase(),
           password: loginForm.password,
         },
       });
       setToken(data.token);
       setSession({ user: data.user, role: data.role, orgId: data.orgId });
       setOrgs(data.orgs ?? []);
+      const nextTheme = data.orgs?.find((org) => org.id === data.orgId)?.theme ?? 'cobalt';
+      setActiveOrgId(data.orgId);
+      setOrgTheme(nextTheme);
       setError('');
-      await loadOrgData(data.orgId);
+      await loadOrgData(data.orgId, data.token);
     } catch (err) {
-      setError(err.message);
+      setError(err.message || 'Invalid credentials.');
     }
   };
 
   const switchOrg = async (orgId) => {
     if (!token) return;
+    setError('');
+    setActiveOrgId(orgId);
+    resetOrgState();
+    const nextTheme = orgs.find((entry) => entry.id === orgId)?.theme ?? 'cobalt';
+    setOrgTheme(nextTheme);
+
     try {
       const switched = await api('/auth/token', {
         method: 'POST',
@@ -117,12 +252,17 @@ function App() {
         body: { orgId },
       });
       setToken(switched.token);
-      setSession((prev) => ({ ...prev, role: switched.role, orgId: switched.orgId }));
-      await loadOrgData(switched.orgId);
+      setSession((prev) => ({ ...(prev || {}), role: switched.role, orgId: switched.orgId }));
+      await loadOrgData(switched.orgId, switched.token);
     } catch (err) {
       setError(err.message);
     }
   };
+
+  useEffect(() => {
+    if (!session || !effectiveOrgId || !token) return;
+    loadOrgData(effectiveOrgId, token).catch(() => undefined);
+  }, [currentView, effectiveOrgId, token]);
 
   const handleGrantCreate = async (event) => {
     event.preventDefault();
@@ -142,8 +282,47 @@ function App() {
       const updated = await api(`/orgs/${activeOrgId}/grants`, { token });
       setGrants(updated.grants ?? []);
       setError('');
-      await loadOrgData(activeOrgId);
+      await loadOrgData(activeOrgId, token);
       if (payload.id) setCurrentView('grants');
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const handleCreateOrg = async () => {
+    const name = window.prompt('Organization name');
+    if (!name || !name.trim()) return;
+    try {
+      const org = await api('/orgs', {
+        method: 'POST',
+        token,
+        body: { name: name.trim() },
+      });
+      const switched = await api('/auth/token', {
+        method: 'POST',
+        token,
+        body: { orgId: org.id },
+      });
+      setOrgs((prev) => [...prev, { id: org.id, name: org.name, theme: org.theme }]);
+      setActiveOrgId(org.id);
+      setOrgTheme(org.theme ?? 'cobalt');
+      setToken(switched.token);
+      setSession((prev) => ({ ...(prev || {}), orgId: switched.orgId, role: switched.role }));
+      setCurrentView('devices');
+      setError('');
+    } catch (err) {
+      setError(err.message || 'Could not create organization.');
+    }
+  };
+
+  const handleGrantRevoke = async (grantId) => {
+    if (!token || !activeOrgId) return;
+    try {
+      await api(`/orgs/${activeOrgId}/grants/${grantId}/revoke`, {
+        method: 'POST',
+        token,
+      });
+      await loadOrgData(activeOrgId, token);
     } catch (err) {
       setError(err.message);
     }
@@ -159,12 +338,16 @@ function App() {
     admin: can('org:update') || can('org:delete'),
   };
 
+  if (window.location.pathname.startsWith('/invite/')) {
+    return <InvitePage />;
+  }
+
   if (!session) {
     return (
       <main style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: '#0f172a', color: '#e2e8f0', fontFamily: 'Inter, ui-sans-serif, system-ui' }}>
         <section style={{ width: 360, background: '#111827', border: '1px solid #334155', borderRadius: 16, padding: 24 }}>
           <h1 style={{ margin: '0 0 12px', fontSize: 28 }}>RemoteOps</h1>
-          <form onSubmit={handleLogin}>
+          <form data-testid="login-form" onSubmit={handleLogin}>
             <label style={{ display: 'block', marginBottom: 8 }}>
               <span>Email</span>
               <input data-testid="login-email" value={loginForm.email} onChange={(e) => setLoginForm((prev) => ({ ...prev, email: e.target.value }))} style={{ width: '100%', marginTop: 6, padding: 10, borderRadius: 8, border: '1px solid #475569', background: '#0f172a', color: '#f8fafc' }} />
@@ -173,7 +356,7 @@ function App() {
               <span>Password</span>
               <input data-testid="login-password" type="password" value={loginForm.password} onChange={(e) => setLoginForm((prev) => ({ ...prev, password: e.target.value }))} style={{ width: '100%', marginTop: 6, padding: 10, borderRadius: 8, border: '1px solid #475569', background: '#0f172a', color: '#f8fafc' }} />
             </label>
-            {error ? <div style={{ color: '#fca5a5', marginBottom: 12 }}>{error}</div> : null}
+            {error ? <div data-testid="login-error" style={{ color: '#fca5a5', marginBottom: 12 }}>{error}</div> : null}
             <button data-testid="login-submit" type="submit" style={{ width: '100%', padding: 10, borderRadius: 8, border: 'none', background: '#38bdf8', color: '#082f49', fontWeight: 600 }}>Sign in</button>
           </form>
         </section>
@@ -183,14 +366,14 @@ function App() {
 
   const shellStyle = {
     minHeight: '100vh',
-    background: orgTheme === 'amber' ? '#fff7ed' : orgTheme === 'moss' ? '#ecfdf5' : orgTheme === 'plum' ? '#faf5ff' : orgTheme === 'rust' ? '#fff7ed' : orgTheme === 'teal' ? '#ecfeff' : '#eef6ff',
+    background: effectiveOrgTheme === 'amber' ? '#fff7ed' : effectiveOrgTheme === 'moss' ? '#ecfdf5' : effectiveOrgTheme === 'plum' ? '#faf5ff' : effectiveOrgTheme === 'rust' ? '#fff7ed' : effectiveOrgTheme === 'teal' ? '#ecfeff' : '#eef6ff',
     color: '#111827',
     fontFamily: 'Inter, ui-sans-serif, system-ui',
     padding: 24,
   };
 
   return (
-    <main data-testid="app-shell" data-org-id={activeOrgId} data-org-theme={orgTheme} style={shellStyle}>
+    <main data-testid="app-shell" data-org-id={effectiveOrgId} data-org-theme={effectiveOrgTheme} style={shellStyle}>
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, marginBottom: 18 }}>
         <div>
           <div style={{ fontSize: 12, letterSpacing: '0.12em', textTransform: 'uppercase', opacity: 0.7 }}>RemoteOps</div>
@@ -202,7 +385,7 @@ function App() {
         </div>
       </header>
 
-      <section style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 18 }}>
+      <section style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 18, alignItems: 'center' }}>
         {orgs.map((org) => (
           <button
             key={org.id}
@@ -220,6 +403,11 @@ function App() {
             {org.name}
           </button>
         ))}
+        {session?.role === 'owner' ? (
+          <button data-testid="create-org" onClick={handleCreateOrg} style={{ padding: '8px 12px', borderRadius: 8, background: '#0f172a', color: '#fff', border: 'none' }}>
+            New org
+          </button>
+        ) : null}
       </section>
 
       <nav style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 18 }}>
@@ -246,32 +434,36 @@ function App() {
       {error ? <div style={{ marginBottom: 18, color: '#b91c1c' }}>{error}</div> : null}
 
       {currentView === 'devices' && (
-        <table style={{ width: '100%', borderCollapse: 'collapse', background: 'rgba(255,255,255,0.7)', borderRadius: 12 }}>
-          <thead>
-            <tr><th style={{ textAlign: 'left', padding: 10 }}>Device</th><th style={{ textAlign: 'left', padding: 10 }}>Type</th><th style={{ textAlign: 'left', padding: 10 }}>Actions</th></tr>
-          </thead>
-          <tbody>
-            {devices.map((device) => (
-              <tr key={device.id} data-testid="device-row" data-device-id={device.id}>
-                <td style={{ padding: 10 }}>{device.name}</td>
-                <td style={{ padding: 10 }}>{device.kind}</td>
-                <td style={{ padding: 10 }}>
-                  {[
-                    'device:view',
-                    'device:control',
-                    'device:terminal',
-                    'device:file_transfer',
-                    'device:update',
-                  ].filter((permission) => device.permissions[permission]?.effect === 'allow').map((permission) => (
-                    <button key={permission} data-permission={permission} data-state="unlocked" style={{ marginRight: 6, padding: '4px 8px', borderRadius: 6, border: '1px solid #93c5fd', background: '#eff6ff' }}>
-                      {permission.split(':')[1]}
-                    </button>
-                  ))}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        devices.length === 0 ? (
+          <div data-testid="devices-empty" style={{ background: 'rgba(255,255,255,0.7)', borderRadius: 12, padding: 24 }}>No devices available.</div>
+        ) : (
+          <table style={{ width: '100%', borderCollapse: 'collapse', background: 'rgba(255,255,255,0.7)', borderRadius: 12 }}>
+            <thead>
+              <tr><th style={{ textAlign: 'left', padding: 10 }}>Device</th><th style={{ textAlign: 'left', padding: 10 }}>Type</th><th style={{ textAlign: 'left', padding: 10 }}>Actions</th></tr>
+            </thead>
+            <tbody>
+              {devices.map((device) => (
+                <tr key={device.id} data-testid="device-row" data-device-id={device.id}>
+                  <td style={{ padding: 10 }}>{device.name}</td>
+                  <td style={{ padding: 10 }}>{device.kind}</td>
+                  <td style={{ padding: 10 }}>
+                    {[
+                      'device:view',
+                      'device:control',
+                      'device:terminal',
+                      'device:file_transfer',
+                      'device:update',
+                    ].filter((permission) => device.permissions?.[permission]?.effect === 'allow').map((permission) => (
+                      <button key={permission} data-permission={permission} data-state="unlocked" style={{ marginRight: 6, padding: '4px 8px', borderRadius: 6, border: '1px solid #93c5fd', background: '#eff6ff' }}>
+                        {permission.split(':')[1]}
+                      </button>
+                    ))}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )
       )}
 
       {currentView === 'people' && (
@@ -347,7 +539,7 @@ function App() {
 
           <table style={{ width: '100%', borderCollapse: 'collapse', background: 'rgba(255,255,255,0.7)' }}>
             <thead>
-              <tr><th style={{ textAlign: 'left', padding: 10 }}>User</th><th style={{ textAlign: 'left', padding: 10 }}>Permission</th><th style={{ textAlign: 'left', padding: 10 }}>Effect</th><th style={{ textAlign: 'left', padding: 10 }}>Scope</th></tr>
+              <tr><th style={{ textAlign: 'left', padding: 10 }}>User</th><th style={{ textAlign: 'left', padding: 10 }}>Permission</th><th style={{ textAlign: 'left', padding: 10 }}>Effect</th><th style={{ textAlign: 'left', padding: 10 }}>Scope</th>{can('grant:revoke') ? <th style={{ textAlign: 'left', padding: 10 }}>Action</th> : null}</tr>
             </thead>
             <tbody>
               {grants.map((grant) => (
@@ -356,6 +548,13 @@ function App() {
                   <td style={{ padding: 10 }}>{grant.permissions.join(', ')}</td>
                   <td style={{ padding: 10 }}>{grant.effect}</td>
                   <td style={{ padding: 10 }}>{grant.deviceName || 'org-wide'}</td>
+                  {can('grant:revoke') ? (
+                    <td style={{ padding: 10 }}>
+                      <button data-testid="revoke-grant" onClick={() => handleGrantRevoke(grant.id)} style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid #fca5a5', background: '#fff1f2', color: '#991b1b' }}>
+                        Revoke
+                      </button>
+                    </td>
+                  ) : null}
                 </tr>
               ))}
             </tbody>

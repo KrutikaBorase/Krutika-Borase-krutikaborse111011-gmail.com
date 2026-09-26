@@ -384,6 +384,16 @@ export function registerRoutes(router, deps) {
     return termToResponse(res, 201, { id: grantId, orgId: params.org, userId, deviceId, effect, permissions });
   });
 
+  router.post('/v1/orgs/:org/grants/:grantId/revoke', (ctx, params, res) => {
+    assertCan(db, ctx, 'grant:revoke');
+    const grant = db.prepare('SELECT * FROM grants WHERE id = ? AND org_id = ? AND revoked_at IS NULL').get(params.grantId, params.org);
+    if (!grant) throw notFound();
+    db.prepare('UPDATE grants SET revoked_at = ? WHERE id = ?').run(nowIso(), params.grantId);
+    db.prepare('UPDATE memberships SET perm_version = perm_version + 1 WHERE org_id = ? AND user_id = ?').run(params.org, grant.user_id);
+    audit(db, { orgId: params.org, actorId: ctx.userId, action: 'grant.revoke', targetType: 'grant', targetId: params.grantId, result: 'allow', requestId: ctx.requestId });
+    return termToResponse(res, 200, { id: params.grantId, orgId: params.org, revoked: true });
+  });
+
   router.get('/v1/orgs/:org/sessions', (ctx, params, res) => {
     const rows = db.prepare(`
       SELECT s.*, d.name AS device_name
